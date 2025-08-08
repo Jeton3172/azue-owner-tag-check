@@ -69,6 +69,7 @@ if ($ownerEmails.Count -gt 0) {
 # Output Excel path
 $outputExcel = Join-Path $SubscriptionsFolder "OwnerTagMapping.xlsx"
 
+
 # Export the data to Excel (no conditional formatting yet)
 $results | Export-Excel -Path $outputExcel -AutoSize -FreezeTopRow -BoldTopRow -WorksheetName "Owner Tag Mapping"
 
@@ -76,11 +77,34 @@ $results | Export-Excel -Path $outputExcel -AutoSize -FreezeTopRow -BoldTopRow -
 $excelPackage = Open-ExcelPackage -Path $outputExcel
 $ws = $excelPackage.Workbook.Worksheets["Owner Tag Mapping"]
 
-# Red for Invalid first
-Set-ConditionalFormatting -Address "E2:E100" -RuleType ContainsText -Text "Invalid" -BackgroundColor Red -FontColor Black
 
-# Green for Valid second
-Set-ConditionalFormatting -Address "E2:E100" -RuleType ContainsText -Text "Valid" -BackgroundColor Green -FontColor Black
+# --- Auto-detect the "Status" column and highlight only Invalid ---
+# Find the "Status" header in row 1 (case-insensitive)
+$lastCol = $ws.Dimension.End.Column
+$headerCells = $ws.Cells[1,1,1,$lastCol]
+$statusCol = ($headerCells | Where-Object {
+    ($_.Text   -as [string]).Trim().ToLower() -eq 'status' -or
+    ($_.Value  -as [string]).Trim().ToLower() -eq 'status'
+}).Start.Column
+
+if (-not $statusCol) { throw "Couldn't find a 'Status' header in row 1." }
+
+# Helper: convert column index -> Excel column letters (handles > Z)
+function Get-ExcelColumnLetter([int]$col) {
+    $s = ""
+    while ($col -gt 0) {
+        $col--; $s = [char](65 + ($col % 26)) + $s
+        $col = [math]::Floor($col / 26)
+    }
+    return $s
+}
+
+$colLetter = Get-ExcelColumnLetter $statusCol
+$lastRow   = $ws.Dimension.End.Row
+$addr      = "{0}2:{0}{1}" -f $colLetter, $lastRow
+
+# Only highlight "Invalid" in red
+Add-ConditionalFormatting -Worksheet $ws -Address $addr -RuleType ContainsText -ConditionValue "Invalid" -BackgroundColor Red
 
 
 Close-ExcelPackage $excelPackage
